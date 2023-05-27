@@ -101,9 +101,10 @@ struct Ball {
                     depth += speed * fElapsedTime;
                     break;
                 case FADING: {
-                    auto old_a = colour.a;
                     colour.a -= fade_rate * fElapsedTime;
-                    if (old_a < colour.a) state = TO_REMOVE;
+                    if (colour.a == 0){
+                        state = TO_REMOVE;
+                    }
                     break;
                 }
                 default: break;
@@ -325,7 +326,11 @@ private:
         balls.erase(std::remove_if(
             balls.begin(), balls.end(),
             [](const Ball* b) { 
-                return b->state == Ball::TO_REMOVE;
+                if (b->state == Ball::TO_REMOVE){
+                    delete b;
+                    return true;
+                }
+                return false;
             }),
             balls.end()
         );
