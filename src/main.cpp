@@ -12,34 +12,15 @@ const int LANE_START = PREVIEW_DEPTH + 1;
 const int LANE_WIDTH = 50;
 const int LANE_DEPTH = 400;
 const int PLAYER_WIDTH = 40;
-const int PLAYER_DEPTH = 20;
+const int PLAYER_CORNER = 4;
 const int COLOUR_COUNT = 4;
+const int STARTER_WIDTH = LANE_WIDTH/2 -2;
+const int ACCEPTOR_DEPTH = LANE_WIDTH;
 const olc::Pixel COLOURS[] = {
     olc::GREEN,
     olc::RED,
     olc::BLUE,
     olc::YELLOW
-};
-
-struct BallGenerator {
-    float min_time = 3.0f;
-    float max_time = 5.0f;
-    std::random_device dev;
-    std::mt19937 rng;
-
-    BallGenerator() :
-        rng(std::mt19937(dev())) 
-    {
-
-    }
-
-    std::pair<int,olc::Pixel> get_next() { 
-        std::uniform_int_distribution<std::mt19937::result_type> dist(min_time,max_time);
-        olc::Pixel colour = COLOURS[rand() % COLOUR_COUNT];
-
-        return {dist(rng), colour};
-    }
-    
 };
 
 struct Ball {
@@ -49,13 +30,14 @@ struct Ball {
         TO_REMOVE,
         FADING,
         HELD,
-        SCORING
+        SCORING,
+        TARGET
     };
 
     e_state state = FALLING;
     olc::Pixel colour;
     float depth;
-    int rad = LANE_WIDTH/2 -2;
+    int rad = STARTER_WIDTH;
     int lane;
     const int speed = 50;
     const int fade_rate = 1;
@@ -69,6 +51,20 @@ struct Ball {
     ~Ball() {
         if (contains != nullptr)
             delete contains;
+    }
+
+    int get_count(){
+        int c = 1;
+        if (contains != nullptr){
+            c += contains->get_count();
+        }
+        return c;
+    }
+
+    bool operator==(const Ball& other){
+        if (colour != other.colour) return false;
+        if (contains == nullptr) return true;
+        return *contains == *(other.contains);
     }
 
     void update(float fElapsedTime, std::vector<bool>& lanes_running, int player_pos) {
@@ -155,7 +151,7 @@ struct Ball {
             case HELD:
                 pge.DrawCircle(
                     {lane*LANE_WIDTH + LANE_WIDTH/2,
-                    LANE_START + LANE_DEPTH + 4 + PLAYER_DEPTH/2},
+                    LANE_START + LANE_DEPTH + 4 + PLAYER_WIDTH/2},
                     rad, colour
                 );
                 break;
@@ -171,6 +167,42 @@ struct Ball {
 
 
 };
+
+struct BallGenerator {
+    float min_time = 3.0f;
+    float max_time = 5.0f;
+    std::random_device dev;
+    std::mt19937 rng;
+
+    BallGenerator() :
+        rng(std::mt19937(dev())) 
+    {
+
+    }
+
+    Ball* get_target() {
+        int depth = 4;
+        Ball* broot = new Ball(COLOURS[rand() % COLOUR_COUNT], -1);
+        Ball* bcurrent = broot;
+
+        for (int i = 1; i < depth; i++){
+            Ball* bnew = new Ball(COLOURS[rand() % COLOUR_COUNT], -1);
+            bcurrent->insert(bnew);
+            bcurrent = bnew;
+        }
+        
+        return broot;
+    }
+
+    std::pair<int,olc::Pixel> get_next() { 
+        std::uniform_int_distribution<std::mt19937::result_type> dist(min_time,max_time);
+        olc::Pixel colour = COLOURS[rand() % COLOUR_COUNT];
+
+        return {dist(rng), colour};
+    }
+    
+};
+
 
 class MJ113 : public olc::PixelGameEngine
 {
@@ -190,6 +222,7 @@ private:
     Ball* held = nullptr;
     int max_time = 5;
     BallGenerator generator;
+    Ball* target = nullptr;
 
 
     bool OnUserCreate() override
@@ -199,6 +232,8 @@ private:
             auto [starter_time, colour] = generator.get_next();
             lane_timer.push_back({starter_time, starter_time, colour});
         }
+
+        target = generator.get_target();
 
         return true;
     }
@@ -303,6 +338,13 @@ private:
         draw_lanes();
         draw_player();
         draw_timer();
+        draw_acceptor();
+    }
+
+    void draw_acceptor() {
+        target->lane = 2;
+        target->depth = LANE_START + LANE_DEPTH + LANE_WIDTH;
+        target->draw(*this);
     }
 
     void draw_timer() {
@@ -336,10 +378,21 @@ private:
     }
 
     void draw_player() {
-        DrawRect(
-            {(player_lane*LANE_WIDTH) + (LANE_WIDTH-PLAYER_WIDTH)/2, LANE_START + LANE_DEPTH + 4},
-            {PLAYER_WIDTH, PLAYER_DEPTH}
+        olc::vi2d player_top_left = {(player_lane*LANE_WIDTH) + (LANE_WIDTH-PLAYER_WIDTH)/2, LANE_START + LANE_DEPTH + 4};
+        olc::vi2d player_size = {PLAYER_WIDTH, PLAYER_WIDTH};
+
+        DrawRect(player_top_left, player_size);
+        FillRect(
+            player_top_left + olc::vi2d(PLAYER_CORNER, 0),
+            player_size - olc::vi2d(2*PLAYER_CORNER, -1),
+            olc::BLACK
         );
+        FillRect(
+            player_top_left + olc::vi2d(0, PLAYER_CORNER),
+            player_size - olc::vi2d(-1, 2*PLAYER_CORNER),
+            olc::BLACK
+        );
+        
         if (held != nullptr){
             held->draw(*this);
         }
@@ -351,8 +404,11 @@ int main()
 {
     srand(time(NULL));
     MJ113 game;
-    if(game.Construct(LANE_WIDTH*LANES+1, PREVIEW_DEPTH + LANE_DEPTH + 4 + 4 + PLAYER_DEPTH, 2, 2))
-        game.Start();
+    if(game.Construct(
+        LANE_WIDTH*LANES+1,
+        PREVIEW_DEPTH + LANE_DEPTH + 4 + 4 + PLAYER_WIDTH + ACCEPTOR_DEPTH,
+        2, 2)
+    ) game.Start();
 
     return 0;
 }
