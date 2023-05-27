@@ -327,7 +327,14 @@ private:
 
                 if (ind != -1){
                     if (held != nullptr){
-                        ball->insert(held);
+                        if (GetKey(olc::SHIFT).bHeld){
+                            held->depth = ball->depth;
+                            held->state = ball->state;
+                            delete ball;
+                            balls[ind] = held;
+                        } else {
+                            ball->insert(held);
+                        }
                         held = nullptr;
                     } else {
                         ball->make_held();
