@@ -301,6 +301,17 @@ private:
                 reaching = true;
                 lane_running[player_lane] = false;
             }
+            if (GetKey(olc::DOWN).bPressed && held != nullptr){
+                if (*held == *target){
+                    std::cout << "match!" << std::endl;
+                } else {
+                    std::cout << "mismatch" << std::endl;
+                }
+                delete held;
+                held = nullptr;
+                delete target;
+                target = generator.get_target();
+            }
         }
 
         for (auto &ball : balls){
@@ -343,7 +354,7 @@ private:
 
     void draw_acceptor() {
         target->lane = 2;
-        target->depth = LANE_START + LANE_DEPTH + LANE_WIDTH;
+        target->depth = LANE_START + LANE_DEPTH + LANE_WIDTH + 2;
         target->draw(*this);
     }
 
@@ -378,7 +389,7 @@ private:
     }
 
     void draw_player() {
-        olc::vi2d player_top_left = {(player_lane*LANE_WIDTH) + (LANE_WIDTH-PLAYER_WIDTH)/2, LANE_START + LANE_DEPTH + 4};
+        olc::vi2d player_top_left = {(player_lane*LANE_WIDTH) + (LANE_WIDTH-PLAYER_WIDTH)/2, LANE_START + LANE_DEPTH + 6};
         olc::vi2d player_size = {PLAYER_WIDTH, PLAYER_WIDTH};
 
         DrawRect(player_top_left, player_size);
