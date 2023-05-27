@@ -183,19 +183,43 @@ struct BallGenerator {
         rng(std::mt19937(dev())) 
     {
         for (int i = 0; i < LANES; i++){
-            targets.push_back(get_target(i));
+            targets.push_back(nullptr);
+        }
+        fill_target();
+    }
+
+    void fill_target(){
+        for (int i = 0; i < LANES; i++){
+            targets[i] = get_target(i);
         }
     }
 
     void update(float fElapsedTime, std::vector<bool>& lanes_running, int player_pos) {
+        bool all_null = true;
         for (auto& t : targets){
-            t->update(fElapsedTime, lanes_running, player_pos);
+            if (t != nullptr){
+                all_null = false;
+                break;
+            }
+        }
+
+        if (all_null){
+            fill_target();
+        }
+
+
+        for (auto& t : targets){
+            if (t != nullptr){
+                t->update(fElapsedTime, lanes_running, player_pos);
+            }
         }
     }
 
     void draw(olc::PixelGameEngine &pge){
         for (auto& t : targets){
-            t->draw(pge);
+            if (t != nullptr){
+                t->draw(pge);
+            }
         }
     }
 
@@ -218,6 +242,7 @@ struct BallGenerator {
     std::pair<bool,int> check_target(Ball* ball) {
         for (size_t i=0; i < targets.size(); i++){
             Ball *t = targets[i];
+            if (t == nullptr) continue;
             if (*t == *ball) return {true, i};
         }
         return {false, -1};
@@ -225,8 +250,7 @@ struct BallGenerator {
     
     void mark_completed(int i){
         delete targets[i];
-        targets[i] = get_target(i);
-        
+        targets[i] = nullptr;
     }
 
     std::pair<int,olc::Pixel> get_next() { 
