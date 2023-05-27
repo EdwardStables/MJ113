@@ -39,7 +39,7 @@ struct Ball {
     float depth;
     int rad = STARTER_WIDTH;
     int lane;
-    const int speed = 50;
+    const int speed = 30;
     const int fade_rate = 1;
     Ball* container = nullptr;
     Ball* contains = nullptr;
