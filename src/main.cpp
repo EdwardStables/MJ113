@@ -2,6 +2,7 @@
 #include "olcSoundWaveEngine.h"
 #include "AssetManager.h"
 #include "math.h"
+#include <random>
 
 using am = AssetManager;
 
@@ -20,6 +21,27 @@ const olc::Pixel COLOURS[] = {
     olc::YELLOW
 };
 
+struct BallGenerator {
+    float min_time = 3.0f;
+    float max_time = 5.0f;
+    std::random_device dev;
+    std::mt19937 rng;
+
+    BallGenerator() :
+        rng(std::mt19937(dev())) 
+    {
+
+    }
+
+    std::pair<int,olc::Pixel> get_next() { 
+        std::uniform_int_distribution<std::mt19937::result_type> dist(min_time,max_time);
+        olc::Pixel colour = COLOURS[rand() % COLOUR_COUNT];
+
+        return {dist(rng), colour};
+    }
+    
+};
+
 struct Ball {
     enum e_state {
         FALLING,
@@ -36,7 +58,7 @@ struct Ball {
     int rad = LANE_WIDTH/2 -2;
     int lane;
     const int speed = 50;
-    const int fade_rate = 10;
+    const int fade_rate = 1;
     Ball* container = nullptr;
     Ball* contains = nullptr;
 
@@ -85,7 +107,7 @@ struct Ball {
                 case FADING: {
                     auto old_a = colour.a;
                     colour.a -= fade_rate * fElapsedTime;
-                    if (old_a > colour.a) state = TO_REMOVE;
+                    if (old_a < colour.a) state = TO_REMOVE;
                     break;
                 }
                 default: break;
@@ -167,14 +189,14 @@ private:
     bool reaching = false;    
     Ball* held = nullptr;
     int max_time = 5;
+    BallGenerator generator;
 
 
     bool OnUserCreate() override
     {
         for (int i=0; i < LANES; i++){
             lane_running.push_back(true);
-            float starter_time = rand() % max_time;
-            olc::Pixel colour = COLOURS[rand() % COLOUR_COUNT];
+            auto [starter_time, colour] = generator.get_next();
             lane_timer.push_back({starter_time, starter_time, colour});
         }
 
@@ -270,8 +292,7 @@ private:
 
             if (current_time < 0.0f){
                 balls.push_back(new Ball(colour, i));
-                float new_time = rand() % max_time;
-                olc::Pixel new_colour = COLOURS[rand() % COLOUR_COUNT];
+                auto [new_time, new_colour] = generator.get_next();
                 lane_timer[i] = {new_time, new_time, new_colour};
             }
         }
@@ -293,7 +314,7 @@ private:
         for (int l = 0; l < LANES; l++){
             auto &[current_time, lane_max_time, colour] = lane_timer[l];
             DrawRect({l*LANE_WIDTH, 0}, {LANE_WIDTH, PREVIEW_DEPTH});
-            FillRect({l*LANE_WIDTH+1, 0+1}, {LANE_WIDTH*(current_time/lane_max_time), PREVIEW_DEPTH}, colour);
+            FillRect({l*LANE_WIDTH+1, 0+1}, {LANE_WIDTH*(current_time/lane_max_time), PREVIEW_DEPTH-1}, colour);
         }
     }
 
