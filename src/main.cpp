@@ -172,8 +172,8 @@ struct Ball {
 };
 
 struct BallGenerator {
-    float min_time = 3.0f;
-    float max_time = 5.0f;
+    float min_time = 6.0f;
+    float max_time = 10.0f;
     std::random_device dev;
     std::mt19937 rng;
 
