@@ -15,6 +15,7 @@ struct Ball {
     enum e_state {
         FALLING,
         STOPPED,
+        TO_REMOVE,
         FADING,
         HELD,
         SCORING
@@ -61,6 +62,9 @@ struct Ball {
                         state = FALLING;
                     }
                     break;
+                case HELD:
+                    lane = player_pos;
+                    break;
                 default: break;
             }
 
@@ -69,9 +73,12 @@ struct Ball {
                 case FALLING:
                     depth += speed * fElapsedTime;
                     break;
-                case FADING:
+                case FADING: {
+                    auto old_a = colour.a;
                     colour.a -= fade_rate * fElapsedTime;
+                    if (old_a > colour.a) state = TO_REMOVE;
                     break;
+                }
                 default: break;
             }
         }
@@ -81,10 +88,25 @@ struct Ball {
         }
     }
 
+    void _insert(){
+        rad = container->rad - 2;
+        if (contains != nullptr){
+            contains->_insert();
+        }
+    }
+
     void insert(Ball* to_insert){
-        to_insert->rad = rad - 2;
-        to_insert->container = this;
-        contains = to_insert;
+        if (contains == nullptr){
+            to_insert->container = this;
+            contains = to_insert;
+            contains->_insert();
+        } else {
+            contains->insert(to_insert);
+        }
+    }
+
+    void make_held(){
+        state = HELD;
     }
 
     void draw(olc::PixelGameEngine &pge){
@@ -99,6 +121,10 @@ struct Ball {
                 pge.DrawCircle({lane*LANE_WIDTH + LANE_WIDTH/2, depth}, rad, colour);
                 pge.SetPixelMode(olc::Pixel::NORMAL);
                 break;
+            case HELD:
+                pge.DrawCircle({lane*LANE_WIDTH + LANE_WIDTH/2, LANE_DEPTH + 4 + PLAYER_DEPTH/2}, rad, colour);
+                break;
+
             default: break;
 
         }
@@ -124,6 +150,9 @@ private:
     int player_lane;
     std::vector<Ball*> balls;
     std::vector<bool> lane_running;
+    bool reaching = false;    
+    Ball* held = nullptr;
+
 
     bool OnUserCreate() override
     {
@@ -148,31 +177,69 @@ private:
         return true;
     }
 
-    void update(float fElapsedTime){
-        if(GetKey(olc::LEFT).bPressed){
-            player_lane = std::max(0, player_lane-1);
-        }
-        if(GetKey(olc::RIGHT).bPressed){
-            player_lane = std::min(LANES-1, player_lane+1);
-        }
-        if(GetKey(olc::SPACE).bPressed){
-            lane_running[player_lane] = !lane_running[player_lane];
+    std::pair<int,Ball*> get_closest_ball(){
+        int closest_index = -1;
+        float max_depth = 0.0f;
+        for (size_t i = 0; i < balls.size(); i++){
+            auto b = balls[i];
+            if (b->lane != player_lane) continue;
+            if (b->depth < max_depth) continue;
+            closest_index = i;
+            max_depth = b->depth;
         }
 
-        std::vector<int> to_rm;
-        int i = 0;
-        for (auto &ball : balls){
-            uint8_t old_a = ball->colour.a;
-            ball->update(fElapsedTime, lane_running, player_lane);
-            if (ball->colour.a > old_a){
-                to_rm.push_back(i);
+        return {closest_index, closest_index == -1 ? nullptr : balls[closest_index]};
+    }
+
+    void update(float fElapsedTime){
+        if (reaching){
+            if (GetKey(olc::UP).bReleased){
+                reaching = false;
+                lane_running[player_lane] = true;
+                auto [ind, ball] = get_closest_ball();
+
+                if (ind != -1){
+                    if (held != nullptr){
+                        ball->insert(held);
+                        held = nullptr;
+                    } else {
+                        ball->make_held();
+                        held = ball;
+                        balls.erase(balls.begin()+ind);
+                    }
+                }
             }
-            i++;
+        } else {
+            if(GetKey(olc::LEFT).bPressed){
+                player_lane = std::max(0, player_lane-1);
+            }
+            if(GetKey(olc::RIGHT).bPressed){
+                player_lane = std::min(LANES-1, player_lane+1);
+            }
+            if(GetKey(olc::SPACE).bPressed){
+                lane_running[player_lane] = !lane_running[player_lane];
+            }
+            if (GetKey(olc::UP).bPressed){
+                reaching = true;
+                lane_running[player_lane] = false;
+            }
         }
-        for (const auto &i : to_rm){
-            delete balls[i];
-            balls.erase(balls.begin()+i);
+
+        for (auto &ball : balls){
+            ball->update(fElapsedTime, lane_running, player_lane);
         }
+
+        if (held!=nullptr){
+            held->update(fElapsedTime, lane_running, player_lane);
+        }
+
+        balls.erase(std::remove_if(
+            balls.begin(), balls.end(),
+            [](const Ball* b) { 
+                return b->state == Ball::TO_REMOVE;
+            }),
+            balls.end()
+        );
     }
 
     void draw(){
@@ -203,6 +270,9 @@ private:
             {(player_lane*LANE_WIDTH) + (LANE_WIDTH-PLAYER_WIDTH)/2, LANE_DEPTH + 4},
             {PLAYER_WIDTH, PLAYER_DEPTH}
         );
+        if (held != nullptr){
+            held->draw(*this);
+        }
     }
 };
 
