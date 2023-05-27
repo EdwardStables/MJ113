@@ -5,11 +5,20 @@
 
 using am = AssetManager;
 
+const int PREVIEW_DEPTH = 20;
 const int LANES = 5;
+const int LANE_START = PREVIEW_DEPTH + 1;
 const int LANE_WIDTH = 50;
 const int LANE_DEPTH = 400;
 const int PLAYER_WIDTH = 40;
 const int PLAYER_DEPTH = 20;
+const int COLOUR_COUNT = 4;
+const olc::Pixel COLOURS[] = {
+    olc::GREEN,
+    olc::RED,
+    olc::BLUE,
+    olc::YELLOW
+};
 
 struct Ball {
     enum e_state {
@@ -114,15 +123,19 @@ struct Ball {
         switch(state){
             case FALLING:
             case STOPPED:
-                pge.DrawCircle({lane*LANE_WIDTH + LANE_WIDTH/2, depth}, rad, colour);
+                pge.DrawCircle({lane*LANE_WIDTH + LANE_WIDTH/2, LANE_START + depth}, rad, colour);
                 break;
             case FADING:
                 pge.SetPixelMode(olc::Pixel::ALPHA);
-                pge.DrawCircle({lane*LANE_WIDTH + LANE_WIDTH/2, depth}, rad, colour);
+                pge.DrawCircle({lane*LANE_WIDTH + LANE_WIDTH/2, LANE_START +  depth}, rad, colour);
                 pge.SetPixelMode(olc::Pixel::NORMAL);
                 break;
             case HELD:
-                pge.DrawCircle({lane*LANE_WIDTH + LANE_WIDTH/2, LANE_DEPTH + 4 + PLAYER_DEPTH/2}, rad, colour);
+                pge.DrawCircle(
+                    {lane*LANE_WIDTH + LANE_WIDTH/2,
+                    LANE_START + LANE_DEPTH + 4 + PLAYER_DEPTH/2},
+                    rad, colour
+                );
                 break;
 
             default: break;
@@ -150,20 +163,21 @@ private:
     int player_lane;
     std::vector<Ball*> balls;
     std::vector<bool> lane_running;
+    std::vector<std::tuple<float,float,olc::Pixel>> lane_timer;
     bool reaching = false;    
     Ball* held = nullptr;
+    int max_time = 5;
 
 
     bool OnUserCreate() override
     {
         for (int i=0; i < LANES; i++){
             lane_running.push_back(true);
+            float starter_time = rand() % max_time;
+            olc::Pixel colour = COLOURS[rand() % COLOUR_COUNT];
+            lane_timer.push_back({starter_time, starter_time, colour});
         }
 
-        balls.push_back(new Ball(olc::BLUE, 0));
-        balls.push_back(new Ball(olc::RED, 4));
-        balls.push_back(new Ball(olc::GREEN, 2));
-        balls[0]->insert(new Ball(olc::YELLOW, 1));
         return true;
     }
 
@@ -217,7 +231,14 @@ private:
                 player_lane = std::min(LANES-1, player_lane+1);
             }
             if(GetKey(olc::SPACE).bPressed){
-                lane_running[player_lane] = !lane_running[player_lane];
+                if (lane_running[player_lane]){
+                    for (int i=0; i < lane_running.size(); i++){
+                        lane_running[i] = true;
+                    }
+                    lane_running[player_lane] = false;
+                } else {
+                    lane_running[player_lane] = true;
+                }
             }
             if (GetKey(olc::UP).bPressed){
                 reaching = true;
@@ -240,20 +261,48 @@ private:
             }),
             balls.end()
         );
+
+        for (int i=0; i < lane_timer.size(); i++){
+            auto &[current_time, lane_max_time, colour] = lane_timer[i];
+            if (lane_running[i]){
+                current_time -= fElapsedTime;
+            }
+
+            if (current_time < 0.0f){
+                balls.push_back(new Ball(colour, i));
+                float new_time = rand() % max_time;
+                olc::Pixel new_colour = COLOURS[rand() % COLOUR_COUNT];
+                lane_timer[i] = {new_time, new_time, new_colour};
+            }
+        }
     }
 
     void draw(){
         draw_balls();
         draw_lanes();
         draw_player();
+        draw_timer();
+    }
+
+    void draw_timer() {
+        FillRect(
+            {0, 0},
+            {ScreenWidth(), PREVIEW_DEPTH},
+            olc::BLACK
+        );
+        for (int l = 0; l < LANES; l++){
+            auto &[current_time, lane_max_time, colour] = lane_timer[l];
+            DrawRect({l*LANE_WIDTH, 0}, {LANE_WIDTH, PREVIEW_DEPTH});
+            FillRect({l*LANE_WIDTH+1, 0+1}, {LANE_WIDTH*(current_time/lane_max_time), PREVIEW_DEPTH}, colour);
+        }
     }
 
     void draw_lanes() {
         for (int l = 0; l < LANES; l++){
-            DrawRect({l*LANE_WIDTH, 0}, {LANE_WIDTH, LANE_DEPTH});
+            DrawRect({l*LANE_WIDTH, LANE_START}, {LANE_WIDTH, LANE_DEPTH});
         }
         FillRect(
-            {0,LANE_DEPTH+1},
+            {0, LANE_START + LANE_DEPTH+1},
             {ScreenWidth(), ScreenHeight()-LANE_DEPTH},
             olc::BLACK
         );
@@ -267,7 +316,7 @@ private:
 
     void draw_player() {
         DrawRect(
-            {(player_lane*LANE_WIDTH) + (LANE_WIDTH-PLAYER_WIDTH)/2, LANE_DEPTH + 4},
+            {(player_lane*LANE_WIDTH) + (LANE_WIDTH-PLAYER_WIDTH)/2, LANE_START + LANE_DEPTH + 4},
             {PLAYER_WIDTH, PLAYER_DEPTH}
         );
         if (held != nullptr){
@@ -279,8 +328,9 @@ private:
 
 int main()
 {
+    srand(time(NULL));
     MJ113 game;
-    if(game.Construct(LANE_WIDTH*LANES+1, LANE_DEPTH + 4 + 4 + PLAYER_DEPTH, 2, 2))
+    if(game.Construct(LANE_WIDTH*LANES+1, PREVIEW_DEPTH + LANE_DEPTH + 4 + 4 + PLAYER_DEPTH, 2, 2))
         game.Start();
 
     return 0;
