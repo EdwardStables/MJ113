@@ -177,27 +177,56 @@ struct BallGenerator {
     std::random_device dev;
     std::mt19937 rng;
 
+    std::vector<Ball*> targets;
+
     BallGenerator() :
         rng(std::mt19937(dev())) 
     {
-
+        for (int i = 0; i < LANES; i++){
+            targets.push_back(get_target(i));
+        }
     }
 
-    Ball* get_target() {
-        int depth = 4;
-        Ball* broot = new Ball(COLOURS[rand() % COLOUR_COUNT], -1);
+    void update(float fElapsedTime, std::vector<bool>& lanes_running, int player_pos) {
+        for (auto& t : targets){
+            t->update(fElapsedTime, lanes_running, player_pos);
+        }
+    }
+
+    void draw(olc::PixelGameEngine &pge){
+        for (auto& t : targets){
+            t->draw(pge);
+        }
+    }
+
+    Ball* get_target(int lane) {
+        int depth = rand() % 4;
+        Ball* broot = new Ball(COLOURS[rand() % COLOUR_COUNT], lane);
         broot->state = Ball::TARGET;
-        broot->lane = 2;
         broot->depth = LANE_START + LANE_DEPTH + LANE_WIDTH + 2;
         Ball* bcurrent = broot;
 
         for (int i = 1; i < depth; i++){
-            Ball* bnew = new Ball(COLOURS[rand() % COLOUR_COUNT], -1);
+            Ball* bnew = new Ball(COLOURS[rand() % COLOUR_COUNT], lane);
             bcurrent->insert(bnew);
             bcurrent = bnew;
         }
 
         return broot;
+    }
+
+    std::pair<bool,int> check_target(Ball* ball) {
+        for (size_t i=0; i < targets.size(); i++){
+            Ball *t = targets[i];
+            if (*t == *ball) return {true, i};
+        }
+        return {false, -1};
+    }
+    
+    void mark_completed(int i){
+        delete targets[i];
+        targets[i] = get_target(i);
+        
     }
 
     std::pair<int,olc::Pixel> get_next() { 
@@ -228,7 +257,6 @@ private:
     Ball* held = nullptr;
     int max_time = 5;
     BallGenerator generator;
-    Ball* target = nullptr;
 
 
     bool OnUserCreate() override
@@ -238,8 +266,6 @@ private:
             auto [starter_time, colour] = generator.get_next();
             lane_timer.push_back({starter_time, starter_time, colour});
         }
-
-        target = generator.get_target();
 
         return true;
     }
@@ -308,14 +334,12 @@ private:
                 lane_running[player_lane] = false;
             }
             if (GetKey(olc::DOWN).bPressed && held != nullptr){
-                if (*held == *target){
-                    std::cout << "match!" << std::endl;
+                auto [matched, index] = generator.check_target(held);
+                if (matched){
                     delete held;
                     held = nullptr;
-                    delete target;
-                    target = generator.get_target();
+                    generator.mark_completed(index);
                 } else {
-                    std::cout << "mismatch" << std::endl;
                 }
             }
         }
@@ -328,9 +352,7 @@ private:
             held->update(fElapsedTime, lane_running, player_lane);
         }
 
-        if (target!=nullptr){
-            target->update(fElapsedTime, lane_running, player_lane);
-        }
+        generator.update(fElapsedTime, lane_running, player_lane);
 
         balls.erase(std::remove_if(
             balls.begin(), balls.end(),
@@ -367,7 +389,7 @@ private:
     }
 
     void draw_acceptor() {
-        target->draw(*this);
+        generator.draw(*this);
     }
 
     void draw_timer() {
