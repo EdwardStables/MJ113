@@ -63,7 +63,8 @@ struct Ball {
 
     bool operator==(const Ball& other){
         if (colour != other.colour) return false;
-        if (contains == nullptr) return true;
+        if (contains == nullptr && other.contains == nullptr) return true;
+        if (contains == nullptr || other.contains == nullptr) return false;
         return *contains == *(other.contains);
     }
 
@@ -142,6 +143,7 @@ struct Ball {
         switch(state){
             case FALLING:
             case STOPPED:
+            case TARGET:
                 pge.DrawCircle({lane*LANE_WIDTH + LANE_WIDTH/2, LANE_START + depth}, rad, colour);
                 break;
             case FADING:
@@ -184,6 +186,9 @@ struct BallGenerator {
     Ball* get_target() {
         int depth = 4;
         Ball* broot = new Ball(COLOURS[rand() % COLOUR_COUNT], -1);
+        broot->state = Ball::TARGET;
+        broot->lane = 2;
+        broot->depth = LANE_START + LANE_DEPTH + LANE_WIDTH + 2;
         Ball* bcurrent = broot;
 
         for (int i = 1; i < depth; i++){
@@ -191,7 +196,7 @@ struct BallGenerator {
             bcurrent->insert(bnew);
             bcurrent = bnew;
         }
-        
+
         return broot;
     }
 
@@ -305,13 +310,13 @@ private:
             if (GetKey(olc::DOWN).bPressed && held != nullptr){
                 if (*held == *target){
                     std::cout << "match!" << std::endl;
+                    delete held;
+                    held = nullptr;
+                    delete target;
+                    target = generator.get_target();
                 } else {
                     std::cout << "mismatch" << std::endl;
                 }
-                delete held;
-                held = nullptr;
-                delete target;
-                target = generator.get_target();
             }
         }
 
@@ -321,6 +326,10 @@ private:
 
         if (held!=nullptr){
             held->update(fElapsedTime, lane_running, player_lane);
+        }
+
+        if (target!=nullptr){
+            target->update(fElapsedTime, lane_running, player_lane);
         }
 
         balls.erase(std::remove_if(
@@ -358,8 +367,6 @@ private:
     }
 
     void draw_acceptor() {
-        target->lane = 2;
-        target->depth = LANE_START + LANE_DEPTH + LANE_WIDTH + 2;
         target->draw(*this);
     }
 
